@@ -1,0 +1,13 @@
+# Do not upload the massive dataset
+DATASET.csv
+*.csv
+
+# Python Virtual Environment
+venv/
+__pycache__/
+
+# Do not upload the local vector database
+chroma_db/
+
+# Hidden for now
+src/
