@@ -10,7 +10,7 @@ This system is designed to ingest bug reports, stack traces, and error logs, ana
 *   **Bug Submission Module**: A Python-based interactive frontend UI has been built using Streamlit (`app.py`).
 *   **Dependencies Configured**: Core technologies configured in `requirements.txt`.
 
-*(Note: Data pipelines and RAG implementation scripts are currently in active development and will be released in upcoming commits.)*
+*   **Data Engineering Pipeline**: The knowledge base scripts (`src/`) for data cleaning, chunking, and ChromaDB vector embedding have been completed and uploaded.
 
 ## 📄 Documentation
 *   [System Architecture & Design Document](design_document.md)
