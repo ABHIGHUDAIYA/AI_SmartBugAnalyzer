@@ -5,7 +5,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 import io
 import sys
-import base64
+import sys
 sys.path.append('src')
 from agents import run_triage_agent, run_log_analysis_agent, run_remediation_agent
 
@@ -16,13 +16,6 @@ st.set_page_config(
     layout="centered",
     initial_sidebar_state="expanded"
 )
-
-def get_base64_image(image_path):
-    try:
-        with open(image_path, "rb") as img_file:
-            return base64.b64encode(img_file.read()).decode()
-    except:
-        return ""
 
 # Initialize session state for API Key if not present
 if 'api_key' not in st.session_state:
