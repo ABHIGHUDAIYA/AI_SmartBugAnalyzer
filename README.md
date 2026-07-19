@@ -19,7 +19,7 @@ This system leverages a multi-agent AI architecture to process bug reports in re
 
 1. Clone the repository:
    ```bash
-   git clone <repo-url>
+   git clone <https://github.com/ABHIGHUDAIYA/AI_SmartBugAnalyzer.git>
    cd AI_SmartBugAnalyzer
    ```
 2. Create and activate a virtual environment (recommended):
