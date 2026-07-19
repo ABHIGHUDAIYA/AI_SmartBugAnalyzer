@@ -1,17 +1,46 @@
-# 🐛 AI SmartBugAnalyzer
+# SmartBug Analyzer
 
-An AI-powered defect analysis tool that uses a RAG pipeline and multi-agent orchestration to automatically triage bug reports and detect duplicates.
+An AI-powered Multi-Agent Triage & Root Cause Analysis system designed to automate software bug management.
 
-## 📌 Project Overview
-This system is designed to ingest bug reports, stack traces, and error logs, analyze them against a historical knowledge base of resolved bugs (from Mozilla, Apache, and Eclipse), and provide automated triage, duplicate detection, and root-cause analysis.
+## Architecture
 
-## 📂 Current Progress (Milestone 1)
-*   **Architecture Design**: The system architecture, agent responsibilities, and orchestration flow have been fully documented.
-*   **Bug Submission Module**: A Python-based interactive frontend UI has been built using Streamlit (`app.py`).
-*   **Dependencies Configured**: Core technologies configured in `requirements.txt`.
+This system leverages a multi-agent AI architecture to process bug reports in real-time:
+1. **Triage Agent**: Analyzes defect descriptions to determine priority, severity, and assigned component.
+2. **Log Analysis Agent**: Parses stack traces to pinpoint the exact file, line number, and root cause.
+3. **Duplicate Agent**: Utilizes ChromaDB vector search to find similar historical bugs.
+4. **Remediation Agent**: Synthesizes the output to recommend actionable code fixes.
 
-*   **Data Engineering Pipeline**: The knowledge base scripts (`src/`) for data cleaning, chunking, and ChromaDB vector embedding have been completed and uploaded.
+## Features
+- **Manual Analysis**: Interactive dashboard for submitting individual bug reports.
+- **Automated Validation Suite**: High-throughput automated batch testing engine against seeded datasets.
+- **Modern UI**: Sleek, fully responsive Streamlit interface with a custom glassmorphism design system.
 
-## 📄 Documentation
-*   [System Architecture & Design Document](design_document.md)
-*   [Project Technology Stack](tech_stack.md)
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone <repo-url>
+   cd AI_SmartBugAnalyzer
+   ```
+2. Create and activate a virtual environment (recommended):
+   ```bash
+   python -m venv venv
+   # On Windows
+   .\venv\Scripts\Activate.ps1
+   # On Mac/Linux
+   source venv/bin/activate
+   ```
+3. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
+4. Run the application:
+   ```bash
+   streamlit run app.py
+   ```
+
+## Configuration
+Requires a Google Gemini API Key. You can configure this directly via the secure sidebar inside the Streamlit UI.
+
+## License
+MIT License.
