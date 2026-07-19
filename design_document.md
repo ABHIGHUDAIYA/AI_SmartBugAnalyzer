@@ -7,8 +7,8 @@ The Defect Analysis AI System is a platform that automatically analyzes software
 
 ### 2.1 User Interface (Streamlit)
 - **Role**: The main interface where users interact with the system.
-- **Features**: Allows users to paste bug text directly or upload log files (e.g., `.txt`, `.log`, `.pdf`).
-- **Tech**: Built entirely in Python using Streamlit.
+- **Features**: Allows users to manually paste bug text, and features an Automated Validation Suite dashboard to process bulk test samples.
+- **Tech**: Built entirely in Python using Streamlit with custom CSS (Glassmorphism).
 
 ### 2.2 Historical Defect Knowledge Base (RAG Pipeline)
 - **Role**: Acts as the memory of the system. It stores thousands of resolved historical bugs from open-source projects (like Mozilla, Apache, and Eclipse) so the AI can learn from past solutions.
