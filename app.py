@@ -254,6 +254,16 @@ with tab1:
                 # Execute Live Agents
                 triage_res = run_triage_agent(api_key, bug_report)
                 log_res = run_log_analysis_agent(api_key, stack_trace, error_log)
+                
+                # Milestone 2 Requirement: Save combined structured output for downstream agents
+                import json
+                combined_output = {
+                    "triage_agent_output": triage_res.dict() if triage_res else {},
+                    "log_analysis_output": log_res.dict() if log_res else {}
+                }
+                with open("milestone2_output.json", "w", encoding="utf-8") as f:
+                    json.dump(combined_output, f, indent=4)
+                    
                 remediation_res = run_remediation_agent(api_key, triage_res, log_res)
                 
             st.success("✨ Analysis Complete!")
