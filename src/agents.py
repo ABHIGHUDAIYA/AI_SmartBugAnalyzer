@@ -21,6 +21,19 @@ class LogAnalysisResult(BaseModel):
 class RemediationResult(BaseModel):
     suggested_fix: str = Field(description="A clear 1-2 sentence suggested code fix or configuration change")
 
+class RootCauseResult(BaseModel):
+    cause_hypothesis: str = Field(description="The hypothesized root cause of the defect based on historical patterns")
+    confidence_score: float = Field(description="Confidence score of the hypothesis from 0.0 to 1.0")
+    supporting_evidence: str = Field(description="Evidence supporting this hypothesis, extracted from logs and historical data")
+
+class DuplicateMatch(BaseModel):
+    bug_id: str = Field(description="The ID of the historical bug")
+    similarity_score: float = Field(description="Similarity score between 0.0 and 1.0")
+    resolution_summary: str = Field(description="A 1-2 sentence summary of how this historical bug was resolved")
+
+class DuplicateDetectionResult(BaseModel):
+    matches: list[DuplicateMatch] = Field(description="List of top matching historical bugs")
+
 # Cache to avoid testing models on every single click
 _VALID_MODEL_CACHE = {}
 
@@ -96,12 +109,54 @@ def run_log_analysis_agent(api_key: str, stack_trace: str, error_log: str) -> Lo
     except Exception as e:
         return LogAnalysisResult(exception_type="Error", failure_point="Error", code_path="Error", suggested_investigation=f"Parsing Error: {str(e)}")
 
-def run_remediation_agent(api_key: str, triage_res: TriageResult, log_res: LogAnalysisResult) -> RemediationResult:
+def run_duplicate_detection_agent(api_key: str, retrieved_docs_json: str) -> DuplicateDetectionResult:
+    if not retrieved_docs_json or retrieved_docs_json == "[]":
+        return DuplicateDetectionResult(matches=[])
+        
+    parser = PydanticOutputParser(pydantic_object=DuplicateDetectionResult)
+    prompt_text = f"You are an expert deduplication agent. Analyze these historically similar bugs retrieved from the vector database. Extract their IDs, their similarity scores, and generate a 1-2 sentence summary of how each was historically resolved.\n\nRetrieved Bugs:\n{retrieved_docs_json}\n\n{parser.get_format_instructions()}"
+    
+    url = get_generate_content_url(api_key)
+    payload = {"contents": [{"parts": [{"text": prompt_text}]}], "generationConfig": {"temperature": 0.0}}
+    
+    try:
+        resp = requests.post(url, json=payload)
+        if resp.status_code != 200:
+            return DuplicateDetectionResult(matches=[])
+        data = resp.json()
+        raw_text = data['candidates'][0]['content']['parts'][0]['text']
+        return parser.parse(raw_text)
+    except Exception as e:
+        return DuplicateDetectionResult(matches=[])
+
+def run_root_cause_agent(api_key: str, log_res: LogAnalysisResult, duplicate_res: DuplicateDetectionResult) -> RootCauseResult:
+    if log_res.exception_type == "N/A" and not duplicate_res.matches:
+        return RootCauseResult(cause_hypothesis="Insufficient data to determine root cause.", confidence_score=0.0, supporting_evidence="No logs or historical matches provided.")
+        
+    parser = PydanticOutputParser(pydantic_object=RootCauseResult)
+    historical_context = [m.resolution_summary for m in duplicate_res.matches]
+    prompt_text = f"You are an expert Root Cause Analysis engineer. Determine the most probable root cause based on the current logs and historical duplicate matches.\n\nCurrent Logs: {log_res.exception_type} - {log_res.failure_point}\nHistorical Resolutions: {historical_context}\n\n{parser.get_format_instructions()}"
+    
+    url = get_generate_content_url(api_key)
+    payload = {"contents": [{"parts": [{"text": prompt_text}]}], "generationConfig": {"temperature": 0.0}}
+    
+    try:
+        resp = requests.post(url, json=payload)
+        if resp.status_code != 200:
+            return RootCauseResult(cause_hypothesis=f"API Rejected: {resp.status_code}", confidence_score=0.0, supporting_evidence="Error")
+        data = resp.json()
+        raw_text = data['candidates'][0]['content']['parts'][0]['text']
+        return parser.parse(raw_text)
+    except Exception as e:
+        return RootCauseResult(cause_hypothesis=f"Parsing Error: {str(e)}", confidence_score=0.0, supporting_evidence="Error")
+
+def run_remediation_agent(api_key: str, triage_res: TriageResult, log_res: LogAnalysisResult, root_cause_res: RootCauseResult, duplicate_res: DuplicateDetectionResult) -> RemediationResult:
     if triage_res.severity == "N/A" and log_res.exception_type == "N/A":
         return RemediationResult(suggested_fix="No context provided to generate a fix.")
         
     parser = PydanticOutputParser(pydantic_object=RemediationResult)
-    prompt_text = f"You are an expert software remediation engineer. Based on the following AI analysis, suggest a quick, concrete fix for the developer.\n\nSeverity: {triage_res.severity}\nComponent: {triage_res.component}\nException: {log_res.exception_type}\nFailure Point: {log_res.failure_point}\n\n{parser.get_format_instructions()}"
+    historical_context = [m.resolution_summary for m in duplicate_res.matches]
+    prompt_text = f"You are an expert software remediation engineer. Based on the following AI analysis, generate specific fix recommendations grounded in historical resolutions, root cause findings, and best practice guidelines.\n\nSeverity: {triage_res.severity}\nComponent: {triage_res.component}\nException: {log_res.exception_type}\nFailure Point: {log_res.failure_point}\nRoot Cause Hypothesis: {root_cause_res.cause_hypothesis}\nHistorical Context: {historical_context}\n\n{parser.get_format_instructions()}"
     
     url = get_generate_content_url(api_key)
     payload = {"contents": [{"parts": [{"text": prompt_text}]}], "generationConfig": {"temperature": 0.0}}

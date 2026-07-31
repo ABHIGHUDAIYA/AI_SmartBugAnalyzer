@@ -6,8 +6,9 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 import io
 import sys
 import sys
+import json
 sys.path.append('src')
-from agents import run_triage_agent, run_log_analysis_agent, run_remediation_agent
+from agents import run_triage_agent, run_log_analysis_agent, run_remediation_agent, run_duplicate_detection_agent, run_root_cause_agent
 
 # Configure the page aesthetics
 st.set_page_config(
@@ -242,80 +243,103 @@ with tab1:
                 # Perform RAG search
                 results = vectorstore.similarity_search(query_text, k=3)
                 
-                # Format the dynamic results
-                duplicate_html = f"Found <strong>{len(results)}</strong> similar historical issues in the Knowledge Base:<br>"
+                # Format RAG retrieved docs to pass to Duplicate Agent
+                retrieved_docs_list = []
                 for doc in results:
-                    b_id = doc.metadata.get('bug_id', 'Unknown')
-                    s_desc = doc.metadata.get('short_description', 'No description')
-                    if len(s_desc) > 50:
-                        s_desc = s_desc[:47] + "..."
-                    duplicate_html += f"<span style='color:#94a3b8;'>• BUG-{b_id}: {s_desc}</span><br>"
-                    
-                # Execute Live Agents
-                triage_res = run_triage_agent(api_key, bug_report)
-                log_res = run_log_analysis_agent(api_key, stack_trace, error_log)
+                    retrieved_docs_list.append({
+                        "bug_id": doc.metadata.get('bug_id', 'Unknown'),
+                        "description": doc.metadata.get('short_description', 'No description'),
+                        "resolution_metadata": doc.page_content
+                    })
+                retrieved_docs_json = json.dumps(retrieved_docs_list)
                 
-                # Milestone 2 Requirement: Save combined structured output for downstream agents
+                # Prepare combined context so agents can read uploaded files
+                full_bug_context = bug_report
+                full_log_context = f"{stack_trace}\n{error_log}"
+                if uploaded_file is not None:
+                    file_content = uploaded_file.getvalue().decode('utf-8')
+                    full_bug_context += f"\nUploaded File Context:\n{file_content}"
+                    full_log_context += f"\nUploaded File Context:\n{file_content}"
+                
+                # Execute Live Agents
+                triage_res = run_triage_agent(api_key, full_bug_context)
+                log_res = run_log_analysis_agent(api_key, full_log_context, "")
+                duplicate_res = run_duplicate_detection_agent(api_key, retrieved_docs_json)
+                root_cause_res = run_root_cause_agent(api_key, log_res, duplicate_res)
+                remediation_res = run_remediation_agent(api_key, triage_res, log_res, root_cause_res, duplicate_res)
+                
+                # Format the dynamic results for duplicate HTML
+                duplicate_html = f"Found <strong>{len(duplicate_res.matches)}</strong> matching historical issues:<br>"
+                for match in duplicate_res.matches:
+                    duplicate_html += f"<div style='margin-top: 8px;'><span style='color:#94a3b8;'>• BUG-{match.bug_id} (Score: {match.similarity_score:.2f})</span><br>"
+                    duplicate_html += f"<span style='font-size:0.8rem; margin-left:15px; color:#cbd5e1;'>Resolution: {match.resolution_summary}</span></div>"
+                
+                # Milestone 3 Requirement: Save combined structured output
                 import json
                 combined_output = {
                     "triage_agent_output": triage_res.dict() if triage_res else {},
-                    "log_analysis_output": log_res.dict() if log_res else {}
+                    "log_analysis_output": log_res.dict() if log_res else {},
+                    "duplicate_detection_output": duplicate_res.dict() if duplicate_res else {},
+                    "root_cause_output": root_cause_res.dict() if root_cause_res else {},
+                    "remediation_output": remediation_res.dict() if remediation_res else {}
                 }
-                with open("milestone2_output.json", "w", encoding="utf-8") as f:
+                with open("milestone3_output.json", "w", encoding="utf-8") as f:
                     json.dump(combined_output, f, indent=4)
-                    
-                remediation_res = run_remediation_agent(api_key, triage_res, log_res)
                 
             st.success("✨ Analysis Complete!")
             st.markdown("---")
             st.markdown("### 🧠 AI Agent Findings")
             
-            # Display results using HTML for premium styling
-            col1, col2 = st.columns(2)
+            # Display results using HTML for premium styling (5 Modules)
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-title triage-color">🚨 Triage Agent (Severity & Priority)</div>
+                <strong>Severity:</strong> {triage_res.severity}<br>
+                <strong>Priority:</strong> {triage_res.priority}<br>
+                <strong>Component:</strong> {triage_res.component}<br>
+                <strong>Confidence:</strong> {triage_res.confidence * 100:.0f}%<br>
+                <div style="margin-top:10px; font-size:0.9rem; color:#94a3b8;">
+                    <em>"{triage_res.reasoning}"</em>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
             
-            with col1:
-                st.markdown(f"""
-                <div class="agent-card">
-                    <div class="agent-title triage-color">🚨 Triage Agent</div>
-                    <strong>Severity:</strong> {triage_res.severity}<br>
-                    <strong>Priority:</strong> {triage_res.priority}<br>
-                    <strong>Component:</strong> {triage_res.component}<br>
-                    <strong>Confidence:</strong> {triage_res.confidence * 100:.0f}%<br>
-                    <div style="margin-top:10px; font-size:0.9rem; color:#94a3b8;">
-                        <em>"{triage_res.reasoning}"</em>
-                    </div>
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-title rootcause-color">🔍 Log Analysis Agent</div>
+                <strong>Exception Type:</strong> <code>{log_res.exception_type}</code><br>
+                <strong>Failure Point:</strong> {log_res.failure_point}<br>
+                <div style="margin-top:10px; font-size:0.9rem;">
+                    <strong>Path:</strong> {log_res.code_path}
                 </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown(f"""
-                <div class="agent-card">
-                    <div class="agent-title rootcause-color">🔍 Log Analysis Agent</div>
-                    <strong>Exception Type:</strong> <code>{log_res.exception_type}</code><br>
-                    <strong>Failure Point:</strong> {log_res.failure_point}<br>
-                    <div style="margin-top:10px; font-size:0.9rem;">
-                        <strong>Path:</strong> {log_res.code_path}
-                    </div>
-                    <div style="margin-top:10px; font-size:0.9rem; color:#94a3b8; border-top:1px solid #334155; padding-top:8px;">
-                        <em>Next Step: {log_res.suggested_investigation}</em>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
 
-            with col2:
-                st.markdown(f"""
-                <div class="agent-card">
-                    <div class="agent-title duplicate-color">📂 Duplicate Agent</div>
-                    {duplicate_html}
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-title" style="color: #fbbf24;">🎯 Root Cause Agent</div>
+                <strong>Hypothesis:</strong> {root_cause_res.cause_hypothesis}<br>
+                <strong>Confidence:</strong> {root_cause_res.confidence_score * 100:.0f}%<br>
+                <div style="margin-top:10px; font-size:0.9rem; color:#94a3b8; border-top:1px solid #334155; padding-top:8px;">
+                    <em>Evidence: {root_cause_res.supporting_evidence}</em>
                 </div>
-                """, unsafe_allow_html=True)
-                
-                st.markdown(f"""
-                <div class="agent-card">
-                    <div class="agent-title remediation-color">🛠️ Remediation Agent</div>
-                    <strong>Suggested Fix:</strong><br>
-                    {remediation_res.suggested_fix}
-                </div>
-                """, unsafe_allow_html=True)
+            </div>
+            """, unsafe_allow_html=True)
+
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-title duplicate-color">📂 Duplicate Detection Agent</div>
+                {duplicate_html}
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.markdown(f"""
+            <div class="agent-card">
+                <div class="agent-title remediation-color">🛠️ Remediation Agent</div>
+                <strong>Suggested Fix:</strong><br>
+                {remediation_res.suggested_fix}
+            </div>
+            """, unsafe_allow_html=True)
 
 with tab2:
     st.markdown("""
